@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DumbDetector — Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  /* --- Geist Sans isn't on Google Fonts, using local @font-face fallback to system --- */
+  /* In production we'd use next/font. For prototype, we load Geist Mono from Google */
+  /* and approximate Geist Sans with a clean sans stack */
+
+  @font-face {
+    font-family: 'Geist Sans Approx';
+    src: local('Geist Sans'), local('GeistSans'), local('-apple-system'), local('system-ui');
+    font-weight: 100 900;
+    font-display: swap;
+  }
+
+  :root {
+    --surface-0: #08080C;
+    --surface-1: #111118;
+    --surface-2: #1A1A24;
+    --surface-3: #252530;
+
+    --text-primary: #E8E8F0;
+    --text-secondary: #6E6E82;
+    --text-tertiary: #3E3E50;
+
+    --signal-green: #00E599;
+    --signal-yellow: #FFB800;
+    --signal-red: #FF3B3B;
+
+    --chart-bar: #6E56CF;
+    --chart-bar-hot: #FF3B3B;
+    --chart-grid: #1A1A24;
+
+    --button-danger: #CC2222;
+    --button-danger-hover: #FF3B3B;
+    --button-danger-active: #FF5252;
+    --button-disabled: #2A2A35;
+
+    --accent: #6E56CF;
+
+    --font-sans: 'Geist Sans Approx', 'Inter', -apple-system, system-ui, sans-serif;
+    --font-mono: 'Geist Mono', 'JetBrains Mono', 'Fira Code', monospace;
+
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+    --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: clamp(0.9rem, 0.85rem + 0.25vw, 1rem);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 var(--space-4);
+  }
+  @media (min-width: 640px) { .container { padding: 0 var(--space-5); } }
+  @media (min-width: 1024px) { .container { padding: 0 var(--space-6); } }
+
+  /* --- NAV --- */
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-5) 0;
+    cursor: pointer;
+  }
+  .nav:hover .nav-logo { opacity: 0.8; }
+  .nav-logo {
+    width: 20px; height: 20px;
+    background: var(--accent);
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    transition: opacity 150ms ease;
+  }
+  .nav-title {
+    font-weight: 800;
+    font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.25rem);
+    letter-spacing: -0.01em;
+  }
+
+  /* --- HEADER --- */
+  .header {
+    padding-bottom: var(--space-7);
+  }
+  .header-tagline {
+    color: var(--text-secondary);
+    font-size: clamp(0.8rem, 0.75rem + 0.25vw, 0.875rem);
+    margin-top: var(--space-1);
+    padding-left: 32px; /* align with title after logo */
+  }
+
+  /* --- MODEL GRID --- */
+  .model-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-4);
+    padding-bottom: var(--space-8);
+  }
+
+  .model-card {
+    background: var(--surface-1);
+    border: 1px solid var(--surface-3);
+    border-radius: 8px;
+    padding: var(--space-4);
+    cursor: pointer;
+    transition: border-color 200ms ease, transform 200ms ease-out;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+  }
+  @media (min-width: 1024px) { .model-card { padding: var(--space-5); } }
+  .model-card:hover {
+    border-color: #3A3A4A;
+    transform: translateY(-1px);
+  }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-1);
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-dot.green { background: var(--signal-green); }
+  .status-dot.yellow { background: var(--signal-yellow); }
+  .status-dot.red {
+    background: var(--signal-red);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.4); opacity: 0.6; }
+  }
+
+  .card-model-name {
+    font-weight: 600;
+    font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.25rem);
+  }
+  .card-provider {
+    color: var(--text-secondary);
+    font-size: clamp(0.65rem, 0.6rem + 0.25vw, 0.75rem);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding-left: 20px; /* align with name after dot */
+  }
+
+  /* --- SPARKLINE (area line) --- */
+  .sparkline {
+    height: 32px;
+    margin: var(--space-4) 0 var(--space-3);
+  }
+  .sparkline svg { width: 100%; height: 100%; display: block; }
+  .sparkline-area { fill-opacity: 0.25; }
+  .sparkline-line { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+  .card-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-reports {
+    font-family: var(--font-mono);
+    font-size: clamp(0.8rem, 0.75rem + 0.25vw, 0.875rem);
+    color: var(--text-secondary);
+  }
+  .card-reports strong {
+    color: var(--text-primary);
+    font-weight: 700;
+  }
+  .card-arrow {
+    color: var(--text-tertiary);
+    transition: color 150ms ease, transform 150ms ease;
+  }
+  .model-card:hover .card-arrow {
+    color: var(--text-secondary);
+    transform: translateX(2px);
+  }
+
+  /* --- FOOTER --- */
+  .footer {
+    border-top: 1px solid var(--surface-2);
+    padding: var(--space-5) 0;
+    color: var(--text-tertiary);
+    font-size: clamp(0.65rem, 0.6rem + 0.25vw, 0.75rem);
+    text-align: center;
+  }
+
+  /* --- PAGE SEPARATOR --- */
+  .page-sep {
+    border: none;
+    border-top: 2px dashed var(--surface-3);
+    margin: var(--space-8) 0;
+  }
+  .page-sep-label {
+    text-align: center;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: clamp(0.65rem, 0.6rem + 0.25vw, 0.75rem);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: var(--space-6);
+  }
+
+  /* ============================= */
+  /* MODEL DETAIL PAGE             */
+  /* ============================= */
+
+  .detail-header {
+    padding: var(--space-5) 0 var(--space-6);
+  }
+  .detail-model-name {
+    font-weight: 800;
+    font-size: clamp(1.5rem, 1.2rem + 1.5vw, 2.5rem);
+    letter-spacing: -0.01em;
+    margin-bottom: var(--space-1);
+  }
+  .detail-provider {
+    color: var(--text-secondary);
+    font-size: clamp(0.8rem, 0.75rem + 0.25vw, 0.875rem);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .detail-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+  }
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: clamp(0.65rem, 0.6rem + 0.25vw, 0.75rem);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .status-badge.red {
+    background: rgba(255, 59, 59, 0.12);
+    color: var(--signal-red);
+    border: 1px solid rgba(255, 59, 59, 0.25);
+  }
+  .status-badge.yellow {
+    background: rgba(255, 184, 0, 0.12);
+    color: var(--signal-yellow);
+    border: 1px solid rgba(255, 184, 0, 0.25);
+  }
+  .status-badge.green {
+    background: rgba(0, 229, 153, 0.12);
+    color: var(--signal-green);
+    border: 1px solid rgba(0, 229, 153, 0.25);
+  }
+  .detail-report-count {
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    font-size: clamp(0.8rem, 0.75rem + 0.25vw, 0.875rem);
+  }
+  .detail-report-count strong {
+    color: var(--text-primary);
+    font-weight: 700;
+  }
+
+  /* --- CHART --- */
+  .chart-container {
+    background: var(--surface-1);
+    border: 1px solid var(--surface-3);
+    border-radius: 8px;
+    padding: var(--space-5) var(--space-4);
+    margin-bottom: var(--space-6);
+  }
+  @media (min-width: 1024px) { .chart-container { padding: var(--space-6) var(--space-5); } }
+
+  .chart {
+    position: relative;
+    height: 200px;
+  }
+  @media (min-width: 640px) { .chart { height: 240px; } }
+  @media (min-width: 1024px) { .chart { height: 280px; } }
+  .chart svg { width: 100%; height: 100%; display: block; }
+  .chart-area { fill-opacity: 0.2; }
+  .chart-line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .chart-dot { opacity: 0; transition: opacity 150ms ease; cursor: pointer; }
+  .chart-dot:hover { opacity: 1; }
+  .chart-hit { fill: transparent; cursor: pointer; }
+  .chart-tooltip {
+    display: none;
+    position: absolute;
+    background: var(--surface-3);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 10;
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+  }
+  .chart-gridline { stroke: var(--surface-3); stroke-width: 1; stroke-dasharray: 4 4; }
+
+  .chart-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--space-2);
+    padding: 0 2px;
+  }
+  .chart-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-align: center;
+    flex: 1;
+  }
+  .chart-label.hidden-mobile { display: none; }
+  @media (min-width: 480px) { .chart-label.hidden-mobile { display: block; } }
+
+  /* --- REPORT BUTTON --- */
+  .report-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-bottom: var(--space-8);
+  }
+
+  .report-btn {
+    width: 100%;
+    max-width: 400px;
+    height: 56px;
+    background: var(--button-danger);
+    color: var(--text-primary);
+    border: 1px solid #E03030;
+    border-radius: 8px;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: clamp(0.8rem, 0.75rem + 0.25vw, 0.875rem);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    box-shadow: 0 0 20px rgba(255, 59, 59, 0.15);
+    transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease;
+  }
+  @media (min-width: 1024px) { .report-btn { height: 64px; } }
+  .report-btn:hover {
+    background: var(--button-danger-hover);
+    box-shadow: 0 0 30px rgba(255, 59, 59, 0.25);
+  }
+  .report-btn:active {
+    background: var(--button-danger-active);
+    transform: scale(0.98);
+  }
+  .report-btn.disabled {
+    background: var(--button-disabled);
+    color: var(--text-tertiary);
+    border-color: var(--surface-3);
+    box-shadow: none;
+    cursor: default;
+  }
+  .report-btn.disabled:hover { background: var(--button-disabled); box-shadow: none; }
+
+  .report-feedback {
+    margin-top: var(--space-4);
+    font-family: var(--font-mono);
+    font-size: clamp(0.8rem, 0.75rem + 0.25vw, 0.875rem);
+    color: var(--text-secondary);
+    text-align: center;
+    min-height: 1.5em;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ====== HOMEPAGE ====== -->
+  <header class="header">
+    <nav class="nav" onclick="showPage('home')">
+      <div class="nav-logo"></div>
+      <div class="nav-title">DumbDetector</div>
+    </nav>
+    <div class="header-tagline">Is your AI dumb right now? You're not alone.</div>
+  </header>
+
+  <div id="page-home">
+    <div class="model-grid" id="model-grid"></div>
+  </div>
+
+  <!-- ====== MODEL DETAIL PAGE ====== -->
+  <div id="page-detail" style="display: none;">
+    <div class="detail-header">
+      <div class="detail-model-name" id="detail-name">ChatGPT</div>
+      <div class="detail-provider" id="detail-provider">OpenAI</div>
+      <div class="detail-status">
+        <div class="status-badge red" id="detail-badge">
+          <span class="status-dot red" style="width:6px;height:6px;display:inline-block;"></span>
+          It's being dumb
+        </div>
+        <span class="detail-report-count"><strong id="detail-count">142</strong> reports · past 24h</span>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart" id="detail-chart"></div>
+      <div class="chart-labels" id="chart-labels"></div>
+    </div>
+
+    <div class="report-section">
+      <button class="report-btn" id="report-btn" onclick="handleReport()">
+        It's dumb right now
+      </button>
+      <div class="report-feedback" id="report-feedback"></div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    Community-reported. Not affiliated with any AI provider.
+  </footer>
+
+</div>
+
+<script>
+  // --- Mock data ---
+  const models = [
+    { slug: 'chatgpt', name: 'ChatGPT', provider: 'OpenAI', reports: 142, status: 'red',
+      hourly: [8,12,18,25,31,28,19,14,9,6,4,3,5,8,14,22,35,48,42,38,29,21,15,11] },
+    { slug: 'claude', name: 'Claude', provider: 'Anthropic', reports: 89, status: 'yellow',
+      hourly: [2,3,4,3,2,1,1,2,3,5,8,12,6,4,3,2,3,5,4,3,2,1,2,3] },
+    { slug: 'gemini', name: 'Gemini', provider: 'Google', reports: 23, status: 'yellow',
+      hourly: [1,1,0,1,0,0,1,1,2,3,2,1,1,0,1,2,1,1,1,0,1,1,0,1] },
+    { slug: 'grok', name: 'Grok', provider: 'xAI', reports: 8, status: 'green',
+      hourly: [0,0,1,0,0,0,0,1,0,0,1,0,0,0,0,1,0,1,1,0,0,1,0,1] },
+    { slug: 'copilot', name: 'Copilot', provider: 'Microsoft', reports: 67, status: 'yellow',
+      hourly: [3,4,2,1,1,2,3,4,5,3,2,2,3,4,5,4,3,2,3,4,3,2,1,1] },
+    { slug: 'perplexity', name: 'Perplexity', provider: 'Perplexity AI', reports: 12, status: 'green',
+      hourly: [1,0,0,0,1,0,0,1,1,0,1,0,1,0,0,1,1,0,1,0,0,1,0,1] },
+    { slug: 'midjourney', name: 'Midjourney', provider: 'Midjourney', reports: 34, status: 'yellow',
+      hourly: [2,1,1,0,1,1,2,2,1,1,2,1,2,1,1,2,2,1,2,1,1,2,1,1] },
+    { slug: 'meta-ai', name: 'Meta AI', provider: 'Meta', reports: 5, status: 'green',
+      hourly: [0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0] },
+    { slug: 'mistral', name: 'Le Chat', provider: 'Mistral AI', reports: 19, status: 'green',
+      hourly: [1,1,0,1,0,1,1,0,1,1,0,1,1,0,1,1,0,1,1,0,1,1,0,1] },
+    { slug: 'deepseek', name: 'DeepSeek', provider: 'DeepSeek', reports: 203, status: 'red',
+      hourly: [5,7,9,11,8,6,5,7,12,18,22,15,10,8,9,11,14,12,9,7,6,5,4,3] },
+  ];
+
+  const RED_THRESHOLD = 100;
+
+  // --- SVG helpers ---
+  function buildSparklineSVG(data, status) {
+    const w = 200, h = 32, pad = 1;
+    const maxV = Math.max(...data, 1);
+    const color = status === 'red' ? 'var(--signal-red)' : status === 'yellow' ? 'var(--signal-yellow)' : 'var(--chart-bar)';
+    const points = data.map((v, i) => {
+      const x = pad + (i / (data.length - 1)) * (w - pad * 2);
+      const y = h - pad - (v / maxV) * (h - pad * 2);
+      return { x, y };
+    });
+    const lineD = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+    const areaD = lineD + ` L${points[points.length-1].x},${h} L${points[0].x},${h} Z`;
+    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <path d="${areaD}" fill="${color}" class="sparkline-area"/>
+      <path d="${lineD}" stroke="${color}" class="sparkline-line"/>
+    </svg>`;
+  }
+
+  // --- Render homepage ---
+  function renderHome() {
+    const grid = document.getElementById('model-grid');
+    grid.innerHTML = '';
+    models.forEach(m => {
+      const sparkSVG = buildSparklineSVG(m.hourly, m.status);
+
+      const card = document.createElement('a');
+      card.className = 'model-card';
+      card.href = '#';
+      card.onclick = (e) => { e.preventDefault(); showDetail(m.slug); };
+      card.innerHTML = `
+        <div class="card-top">
+          <span class="status-dot ${m.status}"></span>
+          <span class="card-model-name">${m.name}</span>
+        </div>
+        <div class="card-provider">${m.provider}</div>
+        <div class="sparkline">${sparkSVG}</div>
+        <div class="card-bottom">
+          <span class="card-reports"><strong>${m.reports}</strong> reports · past 24h</span>
+          <span class="card-arrow">&rarr;</span>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  // --- Render detail page ---
+  function showDetail(slug) {
+    const m = models.find(x => x.slug === slug);
+    if (!m) return;
+
+    document.getElementById('page-home').style.display = 'none';
+    document.getElementById('page-detail').style.display = 'block';
+    document.querySelector('.header-tagline').style.display = 'none';
+
+    document.getElementById('detail-name').textContent = m.name;
+    document.getElementById('detail-provider').textContent = m.provider;
+    document.getElementById('detail-count').textContent = m.reports;
+
+    const badge = document.getElementById('detail-badge');
+    badge.className = `status-badge ${m.status}`;
+    const labels = { green: 'Seems fine', yellow: 'Acting up', red: "It's being dumb" };
+    badge.innerHTML = `<span class="status-dot ${m.status}" style="width:6px;height:6px;display:inline-block;"></span> ${labels[m.status]}`;
+
+    // Chart — area line
+    const chart = document.getElementById('detail-chart');
+    const tooltip = document.createElement('div');
+    tooltip.className = 'chart-tooltip';
+    tooltip.id = 'chart-tooltip-el';
+
+    const maxH = Math.max(...m.hourly, 1);
+    const padX = 0, padY = 12;
+    // We use viewBox coordinates; SVG scales to container
+    const vw = 600, vh = 280;
+    const color = m.status === 'red' ? 'var(--signal-red)' : m.status === 'yellow' ? 'var(--signal-yellow)' : 'var(--chart-bar)';
+
+    const points = m.hourly.map((v, i) => ({
+      x: padX + (i / (m.hourly.length - 1)) * (vw - padX * 2),
+      y: padY + (1 - v / maxH) * (vh - padY * 2),
+      v,
+      i
+    }));
+
+    const lineD = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+    const areaD = lineD + ` L${points[points.length-1].x},${vh} L${points[0].x},${vh} Z`;
+
+    // Grid lines (3 horizontal)
+    const gridLines = [0.25, 0.5, 0.75].map(pct => {
+      const y = padY + (1 - pct) * (vh - padY * 2);
+      return `<line x1="0" y1="${y}" x2="${vw}" y2="${y}" class="chart-gridline"/>`;
+    }).join('');
+
+    // Dots + invisible hit areas for hover
+    const dotsAndHits = points.map(p => {
+      const hour = (new Date().getHours() - 23 + p.i + 24) % 24;
+      const label = hour === 0 ? '12a' : hour < 12 ? `${hour}a` : hour === 12 ? '12p' : `${hour-12}p`;
+      return `<circle cx="${p.x}" cy="${p.y}" r="4" fill="${color}" class="chart-dot" data-tip="${p.v} reports · ${label}" data-px="${p.x}" data-py="${p.y}"/>
+        <rect x="${p.x - 12}" y="0" width="24" height="${vh}" class="chart-hit" data-tip="${p.v} reports · ${label}" data-px="${p.x}" data-py="${p.y}"/>`;
+    }).join('');
+
+    chart.innerHTML = `<svg viewBox="0 0 ${vw} ${vh}" preserveAspectRatio="none">
+      ${gridLines}
+      <path d="${areaD}" fill="${color}" class="chart-area"/>
+      <path d="${lineD}" stroke="${color}" class="chart-line"/>
+      ${dotsAndHits}
+    </svg>`;
+    chart.appendChild(tooltip);
+
+    // Tooltip interaction
+    chart.querySelectorAll('[data-tip]').forEach(el => {
+      el.addEventListener('mouseenter', (e) => {
+        const tip = el.getAttribute('data-tip');
+        const px = parseFloat(el.getAttribute('data-px'));
+        const py = parseFloat(el.getAttribute('data-py'));
+        const svg = chart.querySelector('svg');
+        const rect = svg.getBoundingClientRect();
+        const scaleX = rect.width / vw;
+        const scaleY = rect.height / vh;
+        tooltip.textContent = tip;
+        tooltip.style.display = 'block';
+        tooltip.style.left = (px * scaleX) + 'px';
+        tooltip.style.top = (py * scaleY - 8) + 'px';
+        // Show the corresponding dot
+        const dot = el.previousElementSibling || el;
+        if (dot.classList.contains('chart-dot')) dot.style.opacity = '1';
+      });
+      el.addEventListener('mouseleave', () => {
+        tooltip.style.display = 'none';
+        chart.querySelectorAll('.chart-dot').forEach(d => d.style.opacity = '0');
+      });
+    });
+
+    // Labels (every 3 hours)
+    const labelsEl = document.getElementById('chart-labels');
+    labelsEl.innerHTML = m.hourly.map((_, i) => {
+      const hour = (new Date().getHours() - 23 + i + 24) % 24;
+      const label = hour === 0 ? '12a' : hour < 12 ? `${hour}a` : hour === 12 ? '12p' : `${hour-12}p`;
+      const show = i % 3 === 0;
+      return `<span class="chart-label ${show ? '' : 'hidden-mobile'}">${show ? label : ''}</span>`;
+    }).join('');
+
+    // Reset button
+    const btn = document.getElementById('report-btn');
+    btn.className = 'report-btn';
+    btn.textContent = "It's dumb right now";
+    document.getElementById('report-feedback').textContent = '';
+    window._currentModel = m;
+  }
+
+  function showPage(page) {
+    if (page === 'home') {
+      document.getElementById('page-home').style.display = 'block';
+      document.getElementById('page-detail').style.display = 'none';
+      document.querySelector('.header-tagline').style.display = 'block';
+    }
+  }
+
+  // --- Report button ---
+  let cooldown = false;
+  function handleReport() {
+    if (cooldown) return;
+    cooldown = true;
+    const btn = document.getElementById('report-btn');
+    const fb = document.getElementById('report-feedback');
+    const m = window._currentModel;
+
+    btn.style.transform = 'scale(0.98)';
+    setTimeout(() => { btn.style.transform = ''; }, 100);
+
+    m.reports++;
+    document.getElementById('detail-count').textContent = m.reports;
+
+    const others = Math.floor(Math.random() * 30) + 5;
+    fb.textContent = `Noted. ${others} others agree.`;
+
+    btn.className = 'report-btn disabled';
+    let secs = 300;
+    const tick = () => {
+      const min = Math.floor(secs / 60);
+      const sec = String(secs % 60).padStart(2, '0');
+      btn.textContent = `REPORTED · ${min}:${sec} remaining`;
+      if (secs > 0) { secs--; setTimeout(tick, 1000); }
+      else {
+        btn.className = 'report-btn';
+        btn.textContent = "It's dumb right now";
+        fb.textContent = '';
+        cooldown = false;
+      }
+    };
+    tick();
+  }
+
+  // --- Init ---
+  renderHome();
+</script>
+
+</body>
+</html>
